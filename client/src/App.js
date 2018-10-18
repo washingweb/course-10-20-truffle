@@ -1,12 +1,24 @@
 import React, { Component } from "react";
-import SimpleStorageContract from "./contracts/SimpleStorage.json";
+import SavingContract from "./contracts/Saving.json";
 import getWeb3 from "./utils/getWeb3";
 import truffleContract from "truffle-contract";
 
 import "./App.css";
 
 class App extends Component {
-  state = { storageValue: 0, web3: null, accounts: null, contract: null };
+  state = {
+    storageValue: 0,
+    web3: null,
+    accounts: null,
+    contract: null,
+    inputAmount: "1",
+    inputAddress: "",
+    balance: "",
+    withdrawedAmount: "",
+    isOwner: false,
+    isValidUser: false,
+    records: []
+  };
 
   componentDidMount = async () => {
     try {
@@ -17,13 +29,66 @@ class App extends Component {
       const accounts = await web3.eth.getAccounts();
 
       // Get the contract instance.
-      const Contract = truffleContract(SimpleStorageContract);
+
+      const Contract = truffleContract(SavingContract);
       Contract.setProvider(web3.currentProvider);
       const instance = await Contract.deployed();
 
       // Set web3, accounts, and contract to the state, and then proceed with an
       // example of interacting with the contract's methods.
-      this.setState({ web3, accounts, contract: instance }, this.runExample);
+      this.setState({ web3, accounts, contract: instance });
+
+      const address = await instance.address;
+      const balance = await web3.eth.getBalance(address);
+
+      this.setState({ balance: web3.utils.fromWei(balance) });
+
+      const withdrawedAmount = await instance.howMuchWithdrawed.call();
+
+      this.setState({
+        withdrawedAmount: web3.utils.fromWei(withdrawedAmount)
+      });
+
+      const owner = await instance.owner.call();
+      const isOwner = owner === accounts[0];
+      this.setState({ isOwner });
+
+      const isValidUser = await instance.validUsers.call(accounts[0]);
+      this.setState({ isValidUser });
+
+      const toRecord = log => {
+        const dataString = new Date(
+          log.args[2].toNumber() * 1000
+        ).toLocaleDateString();
+        return {
+          id: log.id,
+          amount: web3.utils.fromWei(log.args[0]),
+          action: log.args[1],
+          time: dataString
+        };
+      };
+
+      // process previous events
+      instance.BalanceChanged(
+        { fromBlock: 0, toBlock: "latest" },
+        (err, result) => {
+          if (err) {
+            alert(err);
+          } else {
+            const records = [...this.state.records, toRecord(result)];
+            this.setState({ records });
+          }
+        }
+      );
+
+      // process new events
+      instance.BalanceChanged({}, (err, result) => {
+        if (err) {
+          alert(err);
+        } else {
+          console.log(result);
+        }
+      });
     } catch (error) {
       // Catch any errors for any of the above operations.
       alert(
@@ -31,6 +96,58 @@ class App extends Component {
       );
       console.log(error);
     }
+  };
+
+  handleClick = async () => {
+    const { accounts, contract } = this.state;
+    await contract.set(10, { from: accounts[0] });
+    const response = await contract.get();
+
+    // Update state with the result.
+    this.setState({ storageValue: response.toNumber() });
+  };
+
+  deposit = async () => {
+    const { web3, contract, accounts, inputAmount } = this.state;
+    const amount = parseFloat(inputAmount);
+    await contract.deposit({
+      from: accounts[0],
+      value: web3.utils.toWei(amount.toString())
+    });
+    console.log("tx sent");
+  };
+
+  withdraw = async () => {
+    const { web3, contract, accounts, inputAmount } = this.state;
+    const amount = parseFloat(inputAmount);
+    await contract.withdraw(web3.utils.toWei(amount.toString()), {
+      from: accounts[0]
+    });
+    console.log("tx sent");
+  };
+
+  addUser = async () => {
+    const { contract, accounts, inputAddress } = this.state;
+    await contract.addUser(inputAddress, {
+      from: accounts[0]
+    });
+    console.log("tx sent");
+  };
+
+  removeUser = async () => {
+    const { contract, accounts, inputAddress } = this.state;
+    await contract.removeUser(inputAddress, { from: accounts[0] });
+    console.log("tx sent");
+  };
+
+  onAmountChanged = e => {
+    console.log(e.target.value);
+    this.setState({ inputAmount: e.target.value });
+  };
+
+  onAddressChanged = e => {
+    console.log(e.target.value);
+    this.setState({ inputAddress: e.target.value });
   };
 
   runExample = async () => {
@@ -51,20 +168,92 @@ class App extends Component {
       return <div>Loading Web3, accounts, and contract...</div>;
     }
     return (
-      <div className="App">
-        <h1>Good to Go!</h1>
-        <p>Your Truffle Box is installed and ready.</p>
-        <h2>Smart Contract Example</h2>
-        <p>
-          If your contracts compiled and migrated successfully, below will show
-          a stored value of 5 (by default).
-        </p>
-        <p>
-          Try changing the value stored on <strong>line 37</strong> of App.js.
-        </p>
-        <div>The stored value is: {this.state.storageValue}</div>
+      <div className="container">
+        <div className="column">
+          <div>
+            <div>余额</div>
+            <div>{this.state.balance}</div>
+          </div>
+          <div>当月已取</div>
+          <div>{this.state.withdrawedAmount}</div>
+          <div>
+            <div>
+              <label>金额</label>
+            </div>
+            <div>
+              <input
+                type="text"
+                name=""
+                className="form-control"
+                value={this.state.inputAmount}
+                onChange={this.onAmountChanged}
+              />
+            </div>
+            <div>
+              <button className="btn btn-primary" onClick={this.deposit}>
+                存
+              </button>
+              <button
+                className={this.state.isValidUser ? "btn" : "btn hidden"}
+                onClick={this.withdraw}
+              >
+                取
+              </button>
+            </div>
+          </div>
+          <div
+            id="address-management"
+            className={this.state.isOwner ? "" : "hidden"}
+          >
+            <div>
+              <label>用户管理</label>
+            </div>
+            <div>
+              <input
+                type="text"
+                name=""
+                className="form-control"
+                value={this.state.inputAddress}
+                onChange={this.onAddressChanged}
+              />
+            </div>
+            <button className="btn btn-primary" onClick={this.addUser}>
+              添加
+            </button>
+            <button className="btn btn-danger" onClick={this.removeUser}>
+              删除
+            </button>
+          </div>
+        </div>
+        <div className="column">
+          <ul>
+            {this.state.records.map(r => {
+              return (
+                <li key={r.id}>
+                  <span className={r.action}>{r.time}</span>
+                  <span>{r.amount}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       </div>
     );
+
+    // <div className="App">
+    //   <h1>hi~~</h1>
+    //   <p>Your Truffle Box is installed and ready.</p>
+    //   <h2>Smart Contract Example</h2>
+    //   <p>
+    //     If your contracts compiled and migrated successfully, below will show
+    //     a stored value of 5 (by default).
+    //   </p>
+    //   <p>
+    //     Try changing the value stored on <strong>line 37</strong> of App.js.
+    //   </p>
+    //   <div>The stored value is: {this.state.storageValue}</div>
+    //   <button onClick={this.handleClick}>Click me to set 10</button>
+    // </div>
   }
 }
 

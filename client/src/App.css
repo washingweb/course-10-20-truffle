@@ -1,3 +1,35 @@
 .App {
   text-align: center;
 }
+
+.container {
+  display: flex;
+  flex-direction: row;
+  /* align-items: center; */
+  justify-content: center;
+}
+
+.column {
+  /* flex: 1; */
+  margin-top: 20px;
+  margin-left: 50px;
+  margin-right: 50px;
+}
+
+.btn {
+  width: 100%;
+}
+
+.deposit {
+  color: limegreen;
+  /* background: limegreen; */
+}
+
+.withdraw {
+  color: red;
+  /* background: red; */
+}
+
+.hidden {
+  display: none;
+}
