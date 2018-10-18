@@ -226,10 +226,10 @@ class App extends Component {
           </div>
         </div>
         <div className="column">
-          <ul>
+          <ul className="list-group">
             {this.state.records.map(r => {
               return (
-                <li key={r.id}>
+                <li key={r.id} className="list-group-item">
                   <span className={r.action}>{r.time}</span>
                   <span>{r.amount}</span>
                 </li>
