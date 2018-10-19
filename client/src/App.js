@@ -33,7 +33,7 @@ const toRecord = (log, web3) => {
     log.args.time.toNumber() * 1000
   ).toLocaleDateString();
   return {
-    id: log.id,
+    id: [log.transactionHash, log.logIndex].join("-"),
     amount: web3.utils.fromWei(log.args.amount.toString()),
     action: log.args.action,
     time: dataString
@@ -70,19 +70,17 @@ class App extends Component {
       const instance = await Contract.deployed();
 
       const contractInfo = extractContractInfo(SavingContract);
-      console.log(contractInfo);
 
       const oldInstance = web3old.eth
         .contract(contractInfo.abi)
         .at(contractInfo.address);
 
-      // var myEvent = oldInstance.BalanceChanged();
-      // myEvent.watch((err, event) => {
-      //   if (err) console.error(err);
-      //   else {
-      //     console.log(event);
-      //   }
-      // });
+      web3.currentProvider.publicConfigStore.on("update", async config => {
+        console.log("config updated");
+        const accounts = await web3.eth.getAccounts();
+        this.setState({ accounts });
+        this.updateUiAccount();
+      });
 
       // Set web3, accounts, and contract to the state, and then proceed with an
       // example of interacting with the contract's methods.
@@ -119,7 +117,6 @@ class App extends Component {
           if (err) {
             alert(err);
           } else {
-            console.log(log);
             const records = [...this.state.records, toRecord(log, web3)];
             this.setState({ records });
           }
@@ -315,8 +312,8 @@ class App extends Component {
             {this.state.records.map(r => {
               return (
                 <li key={r.id} className="list-group-item">
-                  <span className={r.action}>{r.time}</span>
-                  <span>{r.amount}</span>
+                  <span>{r.time}</span>
+                  <span className={r.action}>{r.amount}</span>
                 </li>
               );
             })}
