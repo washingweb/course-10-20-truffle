@@ -5,6 +5,41 @@ import truffleContract from "truffle-contract";
 
 import "./App.css";
 
+const extractContractInfo = ContractObject => {
+  const { abi } = ContractObject;
+  let address;
+  const networks = Object.keys(SavingContract.networks);
+  if (networks.length > 0) {
+    address = SavingContract.networks[networks[0]].address;
+  }
+
+  return { abi, address };
+};
+
+// const toRecord = log => {
+//   const dataString = new Date(
+//     log.args[2].toNumber() * 1000
+//   ).toLocaleDateString();
+//   return {
+//     id: log.id,
+//     amount: web3.utils.fromWei(log.args[0]),
+//     action: log.args[1],
+//     time: dataString
+//   };
+// };
+
+const toRecord = (log, web3) => {
+  const dataString = new Date(
+    log.args.time.toNumber() * 1000
+  ).toLocaleDateString();
+  return {
+    id: log.id,
+    amount: web3.utils.fromWei(log.args.amount.toString()),
+    action: log.args.action,
+    time: dataString
+  };
+};
+
 class App extends Component {
   state = {
     storageValue: 0,
@@ -23,7 +58,7 @@ class App extends Component {
   componentDidMount = async () => {
     try {
       // Get network provider and web3 instance.
-      const web3 = await getWeb3();
+      const { web3, web3old } = await getWeb3();
 
       // Use web3 to get the user's accounts.
       const accounts = await web3.eth.getAccounts();
@@ -34,17 +69,30 @@ class App extends Component {
       Contract.setProvider(web3.currentProvider);
       const instance = await Contract.deployed();
 
+      const contractInfo = extractContractInfo(SavingContract);
+      console.log(contractInfo);
+
+      const oldInstance = web3old.eth
+        .contract(contractInfo.abi)
+        .at(contractInfo.address);
+
+      // var myEvent = oldInstance.BalanceChanged();
+      // myEvent.watch((err, event) => {
+      //   if (err) console.error(err);
+      //   else {
+      //     console.log(event);
+      //   }
+      // });
+
       // Set web3, accounts, and contract to the state, and then proceed with an
       // example of interacting with the contract's methods.
       this.setState({ web3, accounts, contract: instance });
 
       const address = await instance.address;
       const balance = await web3.eth.getBalance(address);
-
       this.setState({ balance: web3.utils.fromWei(balance) });
 
       const withdrawedAmount = await instance.howMuchWithdrawed.call();
-
       this.setState({
         withdrawedAmount: web3.utils.fromWei(withdrawedAmount)
       });
@@ -56,39 +104,56 @@ class App extends Component {
       const isValidUser = await instance.validUsers.call(accounts[0]);
       this.setState({ isValidUser });
 
-      const toRecord = log => {
-        const dataString = new Date(
-          log.args[2].toNumber() * 1000
-        ).toLocaleDateString();
-        return {
-          id: log.id,
-          amount: web3.utils.fromWei(log.args[0]),
-          action: log.args[1],
-          time: dataString
-        };
-      };
-
-      // process previous events
-      instance.BalanceChanged(
-        { fromBlock: 0, toBlock: "latest" },
-        (err, result) => {
-          if (err) {
-            alert(err);
-          } else {
-            const records = [...this.state.records, toRecord(result)];
-            this.setState({ records });
-          }
-        }
-      );
-
-      // process new events
-      instance.BalanceChanged({}, (err, result) => {
+      oldInstance.BalanceChanged().watch((err, result) => {
         if (err) {
           alert(err);
         } else {
-          console.log(result);
+          this.updateUiAccount();
         }
       });
+
+      // watch history
+      oldInstance
+        .BalanceChanged({}, { fromBlock: 0, toBlock: "latest" })
+        .watch((err, log) => {
+          if (err) {
+            alert(err);
+          } else {
+            console.log(log);
+            const records = [...this.state.records, toRecord(log, web3)];
+            this.setState({ records });
+          }
+        });
+
+      oldInstance.UserChanged().watch((err, log) => {
+        if (err) {
+          alert(err);
+        } else {
+          this.updateUiAccount();
+        }
+      });
+
+      // process previous events
+      // instance.BalanceChanged(
+      //   { fromBlock: 0, toBlock: "latest" },
+      //   (err, result) => {
+      //     if (err) {
+      //       alert(err);
+      //     } else {
+      //       const records = [...this.state.records, toRecord(result)];
+      //       this.setState({ records });
+      //     }
+      //   }
+      // );
+
+      // process new events
+      // instance.BalanceChanged({}, (err, result) => {
+      //   if (err) {
+      //     alert(err);
+      //   } else {
+      //     console.log(result);
+      //   }
+      // });
     } catch (error) {
       // Catch any errors for any of the above operations.
       alert(
@@ -96,6 +161,26 @@ class App extends Component {
       );
       console.log(error);
     }
+  };
+
+  updateUiAccount = async () => {
+    const { web3, contract, accounts } = this.state;
+
+    const address = await contract.address;
+    const balance = await web3.eth.getBalance(address);
+    this.setState({ balance: web3.utils.fromWei(balance) });
+
+    const withdrawedAmount = await contract.howMuchWithdrawed.call();
+    this.setState({
+      withdrawedAmount: web3.utils.fromWei(withdrawedAmount)
+    });
+
+    const isValidUser = await contract.validUsers.call(accounts[0]);
+    this.setState({ isValidUser });
+
+    const owner = await contract.owner.call();
+    const isOwner = owner === accounts[0];
+    this.setState({ isOwner });
   };
 
   handleClick = async () => {
