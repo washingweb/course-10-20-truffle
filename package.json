@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/washingweb/course-truffle-react#readme",
   "devDependencies": {
-    "solidity-coverage": "^0.5.11"
+    "solidity-coverage": "^0.5.11",
+    "truffle-hdwallet-provider": "^0.0.6"
   }
 }
